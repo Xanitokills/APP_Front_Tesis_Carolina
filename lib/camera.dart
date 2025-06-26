@@ -85,21 +85,27 @@ class CameraScreenState extends State<CameraScreen> {
             builder: (_) => DescriptionScreen(
               imagePath: image.path,
               styleName: 'Error',
-              description: 'No se puedo procesar la imagen.',
+              description: 'No se pudo procesar la imagen.',
               techniques: [],
             ),
           ),
         );
       }
     } catch (e) {
-      print(e);
+      print('Excepción en _takePicture: $e');
     }
   }
 
   Future<Map<String, dynamic>?> _uploadImage(String imagePath) async {
+    HttpClient client = HttpClient();
+    client.badCertificateCallback =
+        (X509Certificate cert, String host, int port) =>
+            true; // Permitir certificados autofirmados para el túnel
+    client.connectionTimeout = const Duration(seconds: 30);
+
     var request = http.MultipartRequest(
       'POST',
-      Uri.parse('http://localhost:8000/predict'), // Ajusta la URL si usas IP
+      Uri.parse('https://sntps2jn-8001.brs.devtunnels.ms/predict/'),
     );
 
     request.files.add(
@@ -111,16 +117,20 @@ class CameraScreenState extends State<CameraScreen> {
     );
 
     try {
+      print('Enviando solicitud a: ${request.url}');
       var response = await request.send();
+      print('Status code: ${response.statusCode}');
+      var responseBody = await response.stream.bytesToString();
+      print('Respuesta completa: $responseBody');
+
       if (response.statusCode == 200) {
-        var responseBody = await response.stream.bytesToString();
         return Map<String, dynamic>.from(jsonDecode(responseBody));
       } else {
-        print('Error: ${response.statusCode}');
+        print('Error: ${response.statusCode} - $responseBody');
         return null;
       }
     } catch (e) {
-      print('Error al enviar: $e');
+      print('Error al enviar a ${request.url}: $e');
       return null;
     }
   }

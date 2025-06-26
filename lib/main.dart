@@ -3,10 +3,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert'; // Añadido para jsonDecode
+import 'dart:convert';
 import 'package:path/path.dart' as p;
-import 'camera.dart';
-import 'description_screen.dart';
+import 'camera.dart'; // Asegúrate de tener este archivo
+import 'description_screen.dart'; // Asegúrate de tener este archivo
 
 void main() {
   runApp(const MyApp());
@@ -14,6 +14,7 @@ void main() {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -29,6 +30,7 @@ class MyApp extends StatelessWidget {
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return const Center(
@@ -37,8 +39,15 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class SearchScreen extends StatelessWidget {
+class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
+
+  @override
+  _SearchScreenState createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+  final ImagePicker _picker = ImagePicker();
 
   Future<void> _openCamera(BuildContext context) async {
     final cameras = await availableCameras();
@@ -50,16 +59,39 @@ class SearchScreen extends StatelessWidget {
       );
       return;
     }
-    Navigator.push(
+    final XFile? photo = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => CameraScreen(cameras: cameras)),
     );
+    if (photo != null) {
+      await _uploadImage(photo.path);
+    }
   }
 
-  Future<Map<String, dynamic>?> _uploadImage(String imagePath) async {
+  Future<void> _uploadImage(String imagePath) async {
+    // Mostrar loader
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Evita que el usuario cierre el loader
+      builder: (BuildContext context) {
+        return const Center(
+          child: CircularProgressIndicator(
+            color: Colors.purple,
+            strokeWidth: 6.0,
+          ),
+        );
+      },
+    );
+
+    HttpClient client = HttpClient();
+    client.badCertificateCallback =
+        (X509Certificate cert, String host, int port) =>
+            true; // Permitir certificados autofirmados
+    client.connectionTimeout = const Duration(seconds: 30);
+
     var request = http.MultipartRequest(
       'POST',
-      Uri.parse('http://10.0.2.2:8000/predict/'),
+      Uri.parse('https://sntps2jn-8001.brs.devtunnels.ms/predict/'),
     );
 
     request.files.add(
@@ -71,28 +103,87 @@ class SearchScreen extends StatelessWidget {
     );
 
     try {
-      print(
-        'Enviando solicitud a http://10.0.2.2:8000/predict con archivo: ${p.basename(imagePath)}',
-      );
+      print('Enviando solicitud a: ${request.url}');
       var response = await request.send();
       print('Status code: ${response.statusCode}');
       var responseBody = await response.stream.bytesToString();
       print('Respuesta completa: $responseBody');
+
+      // Cerrar loader
+      Navigator.of(context, rootNavigator: true).pop();
+
       if (response.statusCode == 200) {
-        return Map<String, dynamic>.from(jsonDecode(responseBody));
+        final data = jsonDecode(responseBody);
+        // Convertir List<String> a List<Map<String, String>>
+        final techniquesList = (data['tecnicas'] as String?)?.split(', ') ?? [];
+        final techniquesMapped = techniquesList
+            .map(
+              (tech) => {
+                'title': tech,
+                'subtitle':
+                    '', // Opcional, puedes dejarlo vacío o agregar más lógica
+              },
+            )
+            .toList();
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DescriptionScreen(
+              imagePath: imagePath,
+              styleName: data['nombre'] ?? 'Estilo desconocido',
+              description: data['descripcion'] ?? 'No disponible',
+              techniques: techniquesMapped,
+            ),
+          ),
+        );
+      } else if (response.statusCode == 400) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DescriptionScreen(
+              imagePath: imagePath,
+              styleName: 'Error',
+              description:
+                  'No se pudo procesar la imagen. Código: ${response.statusCode} - $responseBody',
+              techniques: [],
+            ),
+          ),
+        );
       } else {
-        print('Error: ${response.statusCode} - $responseBody');
-        return null;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DescriptionScreen(
+              imagePath: imagePath,
+              styleName: 'Error',
+              description:
+                  'No se pudo procesar la imagen. Código: ${response.statusCode} - $responseBody',
+              techniques: [],
+            ),
+          ),
+        );
       }
     } catch (e) {
-      print('Excepción: $e');
-      return null;
+      // Cerrar loader en caso de error
+      Navigator.of(context, rootNavigator: true).pop();
+      print('Excepción al enviar a ${request.url}: $e');
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DescriptionScreen(
+            imagePath: imagePath,
+            styleName: 'Error',
+            description: 'Excepción: $e',
+            techniques: [],
+          ),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final picker = ImagePicker();
     return SafeArea(
       child: Center(
         child: Column(
@@ -116,56 +207,11 @@ class SearchScreen extends StatelessWidget {
             ),
             ElevatedButton.icon(
               onPressed: () async {
-                final XFile? pickedFile = await picker.pickImage(
+                final XFile? pickedFile = await _picker.pickImage(
                   source: ImageSource.gallery,
                 );
                 if (pickedFile != null) {
-                  final response = await _uploadImage(pickedFile.path);
-                  if (response != null) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => DescriptionScreen(
-                          imagePath: pickedFile.path,
-                          styleName:
-                              response['styleName'] ?? 'Estilo desconocido',
-                          description:
-                              response['description'] ?? 'No disponible',
-                          techniques:
-                              (response['techniques'] as List<dynamic>?)
-                                  ?.map(
-                                    (tech) =>
-                                        // ignore: unnecessary_cast
-                                        {
-                                              'title':
-                                                  (tech['title'] ??
-                                                          'Técnica desconocida')
-                                                      .toString(),
-                                              'subtitle':
-                                                  (tech['subtitle'] ??
-                                                          'No disponible')
-                                                      .toString(),
-                                            }
-                                            as Map<String, String>,
-                                  )
-                                  .toList() ??
-                              [],
-                        ),
-                      ),
-                    );
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => DescriptionScreen(
-                          imagePath: pickedFile.path,
-                          styleName: 'Error',
-                          description: 'No se puooodo procesar la imagen.',
-                          techniques: [],
-                        ),
-                      ),
-                    );
-                  }
+                  await _uploadImage(pickedFile.path);
                 }
               },
               icon: const Icon(Icons.upload, size: 34, color: Colors.white),
@@ -191,6 +237,7 @@ class SearchScreen extends StatelessWidget {
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return ListView(
