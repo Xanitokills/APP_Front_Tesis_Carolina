@@ -1,9 +1,10 @@
 import 'dart:io';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-
+import 'package:http/http.dart' as http;
+import 'dart:convert'; // Añadido para jsonDecode
+import 'package:path/path.dart' as p;
 import 'camera.dart';
 import 'description_screen.dart';
 
@@ -31,7 +32,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('Home Screen', style: TextStyle(fontSize: 24)),
+      child: Text('Pantalla de inicio', style: TextStyle(fontSize: 24)),
     );
   }
 }
@@ -43,7 +44,9 @@ class SearchScreen extends StatelessWidget {
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No cameras found on this device.')),
+        const SnackBar(
+          content: Text('No se encontraron cámaras en este dispositivo.'),
+        ),
       );
       return;
     }
@@ -51,6 +54,40 @@ class SearchScreen extends StatelessWidget {
       context,
       MaterialPageRoute(builder: (_) => CameraScreen(cameras: cameras)),
     );
+  }
+
+  Future<Map<String, dynamic>?> _uploadImage(String imagePath) async {
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('http://10.0.2.2:8000/predict/'),
+    );
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        imagePath,
+        filename: p.basename(imagePath),
+      ),
+    );
+
+    try {
+      print(
+        'Enviando solicitud a http://10.0.2.2:8000/predict con archivo: ${p.basename(imagePath)}',
+      );
+      var response = await request.send();
+      print('Status code: ${response.statusCode}');
+      var responseBody = await response.stream.bytesToString();
+      print('Respuesta completa: $responseBody');
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(responseBody));
+      } else {
+        print('Error: ${response.statusCode} - $responseBody');
+        return null;
+      }
+    } catch (e) {
+      print('Excepción: $e');
+      return null;
+    }
   }
 
   @override
@@ -61,12 +98,13 @@ class SearchScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: <Widget>[
-            // Identificar (abrir cámara)
             ElevatedButton.icon(
               onPressed: () => _openCamera(context),
               icon: const Icon(Icons.camera_alt, size: 34, color: Colors.white),
-              label: const Text('Identificar',
-                  style: TextStyle(fontSize: 20, color: Colors.white)),
+              label: const Text(
+                'Identificar',
+                style: TextStyle(fontSize: 20, color: Colors.white),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.purple,
                 padding: const EdgeInsets.all(20),
@@ -76,50 +114,65 @@ class SearchScreen extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Subir (galería → DescriptionScreen)
             ElevatedButton.icon(
               onPressed: () async {
-                final XFile? pickedFile =
-                    await picker.pickImage(source: ImageSource.gallery);
+                final XFile? pickedFile = await picker.pickImage(
+                  source: ImageSource.gallery,
+                );
                 if (pickedFile != null) {
-                  // Datos de ejemplo; luego vendrán de tu back
-                  const fakeDesc =
-                      'El impresionismo es un movimiento pictórico surgido en Francia a finales del siglo XIX que busca captar la impresión visual de un instante...';
-                  final fakeTechniques = [
-                    {
-                      'title': 'Pintura al aire libre (plein air)',
-                      'subtitle':
-                          'Trabajar sobre el motivo directamente, captando la luz cambiante en exteriores.'
-                    },
-                    {
-                      'title': 'Pinceladas sueltas y fragmentadas',
-                      'subtitle':
-                          'Trazos cortos y visibles que sugieren formas sin difuminar en exceso, aportando dinamismo.'
-                    },
-                    {
-                      'title': 'Color roto (“broken color”)',
-                      'subtitle':
-                          'Manchas de pigmento puro yuxtapuestas que el ojo fusiona ópticamente a distancia.'
-                    },
-                  ];
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => DescriptionScreen(
-                        imagePath: pickedFile.path,
-                        styleName: 'Impresionista',
-                        description: fakeDesc,
-                        techniques: fakeTechniques,
+                  final response = await _uploadImage(pickedFile.path);
+                  if (response != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DescriptionScreen(
+                          imagePath: pickedFile.path,
+                          styleName:
+                              response['styleName'] ?? 'Estilo desconocido',
+                          description:
+                              response['description'] ?? 'No disponible',
+                          techniques:
+                              (response['techniques'] as List<dynamic>?)
+                                  ?.map(
+                                    (tech) =>
+                                        // ignore: unnecessary_cast
+                                        {
+                                              'title':
+                                                  (tech['title'] ??
+                                                          'Técnica desconocida')
+                                                      .toString(),
+                                              'subtitle':
+                                                  (tech['subtitle'] ??
+                                                          'No disponible')
+                                                      .toString(),
+                                            }
+                                            as Map<String, String>,
+                                  )
+                                  .toList() ??
+                              [],
+                        ),
                       ),
-                    ),
-                  );
+                    );
+                  } else {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DescriptionScreen(
+                          imagePath: pickedFile.path,
+                          styleName: 'Error',
+                          description: 'No se puooodo procesar la imagen.',
+                          techniques: [],
+                        ),
+                      ),
+                    );
+                  }
                 }
               },
               icon: const Icon(Icons.upload, size: 34, color: Colors.white),
-              label: const Text('Subir',
-                  style: TextStyle(fontSize: 20, color: Colors.white)),
+              label: const Text(
+                'Subir',
+                style: TextStyle(fontSize: 20, color: Colors.white),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange[300],
                 padding: const EdgeInsets.all(20),
@@ -244,13 +297,11 @@ class _MainScreenState extends State<MainScreen> {
             label: '',
           ),
           BottomNavigationBarItem(
-            icon:
-                Icon(Icons.camera_alt, size: _selectedIndex == 1 ? 40 : 25),
+            icon: Icon(Icons.camera_alt, size: _selectedIndex == 1 ? 40 : 25),
             label: '',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.text_snippet,
-                size: _selectedIndex == 2 ? 40 : 25),
+            icon: Icon(Icons.text_snippet, size: _selectedIndex == 2 ? 40 : 25),
             label: '',
           ),
         ],

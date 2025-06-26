@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io'; // For File operations
 import 'description_screen.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart'; // For getting directory paths
-import 'package:path/path.dart' show join; // For joining path components
+import 'package:path/path.dart'
+    show join, basename; // For joining path components
+import 'package:http/http.dart' as http;
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -25,88 +28,116 @@ class CameraScreenState extends State<CameraScreen> {
     super.initState();
     // Ensure there's at least one camera
     if (widget.cameras.isEmpty) {
-      // Handle the case where no cameras are available
-      print("No cameras found!");
-      // You might want to show a message to the user or navigate back
+      print("¡No se encontraron cámaras!");
       return;
     }
 
-    // Initialize the camera controller with the first available camera
-    _controller = CameraController(
-      widget.cameras[0], // Use the first camera
-      ResolutionPreset
-          .medium, // You can choose other presets like high, max, etc.
-    );
+    _controller = CameraController(widget.cameras[0], ResolutionPreset.medium);
 
-    // Initialize the controller. This returns a Future.
     _initializeControllerFuture = _controller.initialize();
   }
 
   @override
   void dispose() {
-    // Dispose of the controller when the widget is disposed.
     _controller.dispose();
     super.dispose();
   }
 
   Future<void> _takePicture() async {
-  await _initializeControllerFuture;
-  try {
-    final XFile image = await _controller.takePicture();
-    setState(() => _imageFile = image);
+    await _initializeControllerFuture;
+    try {
+      final XFile image = await _controller.takePicture();
+      setState(() => _imageFile = image);
 
-    // Datos de ejemplo — luego vendrán de tu back
-    const fakeDescription = 'El impresionismo es un movimiento pictórico surgido...';
-    final fakeTechniques = [
-      {
-        'title': 'Pintura al aire libre (plein air)',
-        'subtitle': 'Trabajar sobre el motivo directamente...'
-      },
-      {
-        'title': 'Pinceladas sueltas y fragmentadas',
-        'subtitle': 'Trazos cortos y visibles que sugieren formas...'
-      },
-      {
-        'title': 'Color roto (“broken color”)',
-        'subtitle': 'Manchas de pigmento puro yuxtapuestas...'
-      },
-    ];
+      // Enviar imagen al backend
+      final response = await _uploadImage(image.path);
+      if (response != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DescriptionScreen(
+              imagePath: image.path,
+              styleName: response['styleName'] ?? 'Estilo desconocido',
+              description: response['description'] ?? 'No disponible',
+              techniques:
+                  (response['techniques'] as List<dynamic>?)
+                      ?.map(
+                        (tech) =>
+                            {
+                                  'title':
+                                      (tech['title'] ?? 'Técnica desconocida')
+                                          .toString(),
+                                  'subtitle':
+                                      (tech['subtitle'] ?? 'No disponible')
+                                          .toString(),
+                                }
+                                as Map<String, String>,
+                      )
+                      .toList() ??
+                  [],
+            ),
+          ),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DescriptionScreen(
+              imagePath: image.path,
+              styleName: 'Error',
+              description: 'No se puedo procesar la imagen.',
+              techniques: [],
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print(e);
+    }
+  }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => DescriptionScreen(
-          imagePath: image.path,
-          styleName: 'Impresionista',
-          description: fakeDescription,
-          techniques: fakeTechniques,
-        ),
+  Future<Map<String, dynamic>?> _uploadImage(String imagePath) async {
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('http://localhost:8000/predict'), // Ajusta la URL si usas IP
+    );
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        imagePath,
+        filename: basename(imagePath),
       ),
     );
-  } catch (e) {
-    print(e);
-  }
-}
 
+    try {
+      var response = await request.send();
+      if (response.statusCode == 200) {
+        var responseBody = await response.stream.bytesToString();
+        return Map<String, dynamic>.from(jsonDecode(responseBody));
+      } else {
+        print('Error: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error al enviar: $e');
+      return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Take a picture')),
-      // You must wait until the controller is initialized before displaying the
-      // camera preview. Use a FutureBuilder to display a loading spinner until the
-      // controller has finished initializing.
+      appBar: AppBar(title: const Text('Toma una foto')),
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
-            // If the Future is complete, display the preview.
             return Stack(
               alignment: Alignment.bottomCenter,
               children: <Widget>[
                 CameraPreview(_controller),
                 if (_imageFile != null)
-                // Display the taken picture
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Align(
@@ -114,8 +145,10 @@ class CameraScreenState extends State<CameraScreen> {
                       child: SizedBox(
                         width: 100,
                         height: 150,
-                        child: Image.file(File(_imageFile!.path),
-                            fit: BoxFit.cover),
+                        child: Image.file(
+                          File(_imageFile!.path),
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
                   ),
@@ -129,7 +162,6 @@ class CameraScreenState extends State<CameraScreen> {
               ],
             );
           } else {
-            // Otherwise, display a loading indicator.
             return const Center(child: CircularProgressIndicator());
           }
         },

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'main.dart'; // Asegúrate de que aquí apunte a donde definas MainScreen
+import 'dart:convert'; // Añadido para jsonDecode
 
 class DescriptionScreen extends StatelessWidget {
   final String imagePath;
@@ -24,27 +25,29 @@ class DescriptionScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-
-              // 1) Imagen grande
               SizedBox(
                 height: MediaQuery.of(context).size.height * 0.4,
                 child: imagePath.startsWith('http')
                     ? Image.network(imagePath, fit: BoxFit.cover)
                     : Image.file(File(imagePath), fit: BoxFit.cover),
               ),
-
-              // 2) Pill con el nombre del estilo
               const SizedBox(height: 16),
               Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 24,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.pink,
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: Column(
                     children: [
-                      const Text('Estilo', style: TextStyle(color: Colors.white)),
+                      const Text(
+                        'Estilo',
+                        style: TextStyle(color: Colors.white),
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         styleName,
@@ -58,8 +61,6 @@ class DescriptionScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // 3) Descripción
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -69,8 +70,6 @@ class DescriptionScreen extends StatelessWidget {
                   style: const TextStyle(fontSize: 16),
                 ),
               ),
-
-              // 4) Técnicas
               const SizedBox(height: 24),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
@@ -86,7 +85,10 @@ class DescriptionScreen extends StatelessWidget {
               const SizedBox(height: 12),
               ...techniques.asMap().entries.map(
                 (entry) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -103,8 +105,6 @@ class DescriptionScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // 5) Indicadores de página (dots)
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -133,19 +133,15 @@ class DescriptionScreen extends StatelessWidget {
           ),
         ),
       ),
-
-      // 6) Misma barra inferior que el resto
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1, // 1 = Search
+        currentIndex: 1,
         showSelectedLabels: false,
         showUnselectedLabels: false,
         selectedItemColor: Colors.white,
         backgroundColor: Colors.pink[400],
         onTap: (index) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => MainScreen(initialIndex: index),
-            ),
+            MaterialPageRoute(builder: (_) => MainScreen(initialIndex: index)),
             (route) => false,
           );
         },
