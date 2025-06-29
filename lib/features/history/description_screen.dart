@@ -62,7 +62,7 @@ class _DescriptionScreenState extends State<DescriptionScreen> {
             SizedBox(
               height: MediaQuery.of(context).size.height * 0.4,
               child: Image.network(
-                "http://10.0.2.2:8000/${widget.model.imagePath}",
+                "https://backend-tesis-production.up.railway.app/${widget.model.imagePath}",
                 fit: BoxFit.cover,
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) {

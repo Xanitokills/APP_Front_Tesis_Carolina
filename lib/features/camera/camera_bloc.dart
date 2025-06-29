@@ -5,14 +5,16 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
-import 'package:prueba_2/features/camera/camera_screen.dart';
 import 'package:prueba_2/features/history/description_screen.dart';
 import 'package:prueba_2/features/history/predict_model.dart';
 import 'package:prueba_2/main.dart';
+import 'package:uuid/uuid.dart';
 
 class CameraBloc {
   // Private constructor
@@ -23,6 +25,27 @@ class CameraBloc {
 
   // Factory constructor returns the same instance
   factory CameraBloc() => _instance;
+  Future<String> getDeviceUUID() async {
+    const storage = FlutterSecureStorage();
+    String? uuid = await storage.read(key: 'device_uuid');
+
+    if (uuid == null) {
+      uuid = Uuid().v4();
+      await storage.write(key: 'device_uuid', value: uuid);
+    }
+
+    return uuid;
+  }
+
+  String getDeviceType() {
+    if (kIsWeb) return 'web';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isMacOS) return 'macos';
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    return 'unknown';
+  }
 
   Future<void> openCamera(BuildContext context) async {
     final cameras = await availableCameras();
@@ -50,7 +73,7 @@ class CameraBloc {
 
     var request = http.MultipartRequest(
       'POST',
-      Uri.parse('http://10.0.2.2:8000/predict/'),
+      Uri.parse('https://backend-tesis-production.up.railway.app/predict/'),
     );
 
     request.files.add(
@@ -60,6 +83,10 @@ class CameraBloc {
         filename: p.basename(imagePath),
       ),
     );
+
+    // Add device_type and device_uuid fields
+    request.fields['device_type'] = getDeviceType();
+    request.fields['device_uuid'] = await getDeviceUUID();
 
     try {
       debugPrint('Enviando solicitud a: ${request.url}');
@@ -130,16 +157,20 @@ class CameraBloc {
 
     var request = http.MultipartRequest(
       'POST',
-      Uri.parse('http://10.0.2.2:8000/predict/'),
+      Uri.parse('https://backend-tesis-production.up.railway.app/predict/'),
     );
 
     request.files.add(
       await http.MultipartFile.fromPath(
-        'image',
-        imagePath,
-        filename: p.basename(imagePath),
+      'image',
+      imagePath,
+      filename: p.basename(imagePath),
       ),
     );
+
+    // Add device_type and device_uuid fields
+    request.fields['device_type'] = getDeviceType();
+    request.fields['device_uuid'] = await getDeviceUUID();
 
     try {
       debugPrint('Enviando solicitud a: ${request.url}');

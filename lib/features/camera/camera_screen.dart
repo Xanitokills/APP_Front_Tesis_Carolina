@@ -69,7 +69,21 @@ class CameraScreenState extends State<CameraScreen> {
       final XFile image = await _controller.takePicture();
       setState(() => _imageFile = image);
       // Enviar imagen al backend
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: false,
+        builder: (BuildContext context) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Colors.purple,
+              strokeWidth: 6.0,
+            ),
+          );
+        },
+      );
       final response = await cameraBloc.uploadImageWithResponse(image.path);
+      Navigator.pop(context);
       if (response != null) {
         GoRouter.of(
           context,

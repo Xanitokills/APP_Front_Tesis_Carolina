@@ -1,7 +1,10 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:prueba_2/features/camera/camera_bloc.dart';
 import 'package:prueba_2/features/history/detail_screen.dart';
 import 'predict_model.dart';
 
@@ -21,12 +24,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<List<PredictModel>> fetchPredictions() async {
+    final cameraBloc = CameraBloc();
     listItems.clear();
+    final uuid = await cameraBloc.getDeviceUUID();
     try {
+      final url =
+          'https://backend-tesis-production.up.railway.app/history/?device_uuid=$uuid';
+      log(url);
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/history/'),
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+        },
       );
-
       if (response.statusCode == 200) {
         final List<dynamic> jsonData = json.decode(response.body);
         return jsonData.map((json) => PredictModel.fromJson(json)).toList();
@@ -34,6 +44,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         throw Exception('Failed to load predictions: ${response.statusCode}');
       }
     } catch (e) {
+      log("$e");
       throw Exception('Error fetching predictions: $e');
     }
   }
@@ -112,7 +123,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.network(
-                              "http://10.0.2.2:8000/${prediction.imagePath}",
+                              "https://backend-tesis-production.up.railway.app/${prediction.imagePath}",
                               fit: BoxFit.cover,
                               height: 100,
                               loadingBuilder:
